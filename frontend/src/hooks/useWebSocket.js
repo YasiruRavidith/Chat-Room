@@ -7,8 +7,8 @@ import { WEBSOCKET_URLS } from '../api/urls';
 import notificationService from '../services/notificationService';
 
 export const useWebSocket = () => {
-    const { accessToken, user: currentUser } = useAuthStore();
-    const { selectedGroup, addMessage, updateMessageStatus, fetchGroups } = useChatStore();
+    const { accessToken } = useAuthStore();
+    const { selectedGroup, addMessage, fetchGroups } = useChatStore();
     const chatSocketRef = useRef(null);
     const notificationSocketRef = useRef(null);
     const [connectionStatus, setConnectionStatus] = useState({
@@ -19,11 +19,11 @@ export const useWebSocket = () => {
 
     const connectSocket = useCallback((url, onMessage, onOpen, onClose, onError, socketType) => {
         if (!accessToken) {
-            console.log(`[WebSocket] Auth token not found. Cannot connect to ${socketType}.`);
+            console.log(`[WebSocket] Auth token not found for ${socketType}. Cannot connect.`);
             return null;
         }
 
-        console.log(`[WebSocket] Connecting to ${socketType} at ${url}`);
+        console.log(`[WebSocket] Connecting to ${socketType}...`);
         const socket = new WebSocket(`${url}?token=${accessToken}`);
 
         socket.onopen = onOpen;
@@ -34,7 +34,7 @@ export const useWebSocket = () => {
                 const data = JSON.parse(event.data);
                 onMessage(data);
             } catch (e) {
-                console.error(`[WebSocket] Error parsing message for ${socketType}:`, e);
+                console.error(`[WebSocket] Error parsing message for ${socketType}:`, e, event.data);
             }
         };
 
@@ -44,8 +44,14 @@ export const useWebSocket = () => {
 
     // --- Notification WebSocket Effect ---
     useEffect(() => {
-        const onOpen = () => setConnectionStatus(prev => ({ ...prev, notifications: 'connected' }));
-        const onClose = () => setConnectionStatus(prev => ({ ...prev, notifications: 'disconnected' }));
+        const onOpen = () => {
+            console.log('[WebSocket] Notifications connected.');
+            setConnectionStatus(prev => ({ ...prev, notifications: 'connected' }));
+        };
+        const onClose = () => {
+            console.log('[WebSocket] Notifications disconnected.');
+            setConnectionStatus(prev => ({ ...prev, notifications: 'disconnected' }));
+        };
         const onError = (err) => console.error('[WebSocket] Notifications error:', err);
         const onMessage = (data) => {
             console.log('[WebSocket] Notification received:', data);
@@ -61,7 +67,6 @@ export const useWebSocket = () => {
         return () => {
             if (notificationSocketRef.current) {
                 notificationSocketRef.current.close(1000, "Component unmounting");
-                notificationSocketRef.current = null;
             }
         };
     }, [accessToken, connectSocket, fetchGroups, selectedGroup?.id]);
@@ -69,44 +74,52 @@ export const useWebSocket = () => {
 
     // --- Chat Room WebSocket Effect ---
     useEffect(() => {
+        // Disconnect from previous chat socket if one exists
+        if (chatSocketRef.current) {
+            chatSocketRef.current.close(1000, "Switching group");
+        }
+
         if (!selectedGroup) {
-             if (chatSocketRef.current) {
-                chatSocketRef.current.close(1000, "Leaving group");
-                chatSocketRef.current = null;
-            }
+            setConnectionStatus(prev => ({ ...prev, chat: 'disconnected' }));
             return;
         }
 
-        const onOpen = () => setConnectionStatus(prev => ({ ...prev, chat: 'connected' }));
-        const onClose = () => setConnectionStatus(prev => ({ ...prev, chat: 'disconnected' }));
+        const onOpen = () => {
+            console.log(`[WebSocket] Chat connected to group ${selectedGroup.id}.`);
+            setConnectionStatus(prev => ({ ...prev, chat: 'connected' }));
+        };
+        const onClose = () => {
+            console.log(`[WebSocket] Chat disconnected from group ${selectedGroup.id}.`);
+            setConnectionStatus(prev => ({ ...prev, chat: 'disconnected' }));
+        };
         const onError = (err) => console.error(`[WebSocket] Chat error for group ${selectedGroup.id}:`, err);
+        
+        // THIS IS THE CORRECTED onMessage HANDLER
         const onMessage = (data) => {
-            console.log('[WebSocket] Chat message received:', data);
-            switch(data.type) {
-                case 'chat_message':
-                    // The backend should send a complete message object.
-                    // The 'addMessage' function in the store will add it to the state.
-                    addMessage(data);
-                    break;
-                case 'typing_indicator':
-                    // This logic correctly handles adding/removing typing users.
-                    setTypingUsers(prev => {
-                        const isUserTyping = prev.some(u => u.user_id === data.user_id);
-                        if (data.is_typing && !isUserTyping) {
-                            return [...prev, { user_id: data.user_id, name: data.user }];
-                        }
-                        if (!data.is_typing && isUserTyping) {
-                            return prev.filter(u => u.user_id !== data.user_id);
-                        }
-                        return prev;
-                    });
-                    break;
-                case 'error':
-                    // Handle errors sent from the backend consumer
-                    console.error(`[WebSocket] Backend Error: ${data.message}`);
-                    break;
-                default:
-                    console.warn(`[WebSocket] Unknown message type: ${data.type}`);
+            console.log('[WebSocket] Chat data received:', data);
+
+            // The backend consumer sends two types of data:
+            // 1. An object with a 'type' key for events like typing.
+            // 2. A full message object when a message is broadcast. This object will NOT have a 'type' key.
+            
+            if (data.type === 'typing') {
+                // Handle typing indicator
+                setTypingUsers(prev => {
+                    const isUserTyping = prev.some(u => u.user_id === data.user_id);
+                    if (data.is_typing && !isUserTyping) {
+                        return [...prev, { user_id: data.user_id, name: data.user }];
+                    }
+                    if (!data.is_typing && isUserTyping) {
+                        return prev.filter(u => u.user_id !== data.user_id);
+                    }
+                    return prev;
+                });
+            } else if (data.id && data.sender !== undefined) {
+                // This is a message object (it has an 'id' and 'sender' key).
+                // The 'addMessage' function in the store will add it to the state.
+                addMessage(data);
+            } else {
+                 console.warn(`[WebSocket] Unknown message format received:`, data);
             }
         };
 
@@ -114,8 +127,7 @@ export const useWebSocket = () => {
 
         return () => {
             if (chatSocketRef.current) {
-                chatSocketRef.current.close(1000, "Switching group");
-                chatSocketRef.current = null;
+                chatSocketRef.current.close(1000, "Component unmounting or group changed");
             }
             setTypingUsers([]); // Clear typing users when leaving a group
         };
@@ -126,10 +138,11 @@ export const useWebSocket = () => {
 
     const sendChatMessage = useCallback((messageContent) => {
         if (chatSocketRef.current?.readyState === WebSocket.OPEN) {
+            // This is for sending messages directly from client to websocket consumer.
+            // This is less common. The primary way is via API.
             chatSocketRef.current.send(JSON.stringify({
                 type: 'chat_message',
                 message: messageContent,
-                // The backend consumer will get the sender from the scope
             }));
             return true;
         }
@@ -147,6 +160,7 @@ export const useWebSocket = () => {
     }, []);
 
     return { 
+        // sendChatMessage is not used by MessageInput, but kept for potential future use
         sendChatMessage, 
         sendTypingStatus, 
         connectionStatus,

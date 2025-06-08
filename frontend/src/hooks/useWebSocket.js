@@ -1,3 +1,5 @@
+// filepath: src/hooks/useWebSocket.js
+
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore';
@@ -5,8 +7,8 @@ import { WEBSOCKET_URLS } from '../api/urls';
 import notificationService from '../services/notificationService';
 
 export const useWebSocket = () => {
-    const { accessToken, isAuthenticated } = useAuthStore();
-    const { selectedGroup, addMessage, updateMessageStatus, updateOnlineUsers } = useChatStore();
+    const { accessToken, user: currentUser } = useAuthStore();
+    const { selectedGroup, addMessage, updateMessageStatus, fetchGroups } = useChatStore();
     const chatSocketRef = useRef(null);
     const notificationSocketRef = useRef(null);
     const [connectionStatus, setConnectionStatus] = useState({
@@ -15,244 +17,139 @@ export const useWebSocket = () => {
     });
     const [typingUsers, setTypingUsers] = useState([]);
 
-    const connect = useCallback((url, onMessage, socketType = 'default') => {
-        if (!accessToken || !isAuthenticated) {
-            console.log(`🔒 No access token available for ${socketType} WebSocket`);
+    const connectSocket = useCallback((url, onMessage, onOpen, onClose, onError, socketType) => {
+        if (!accessToken) {
+            console.log(`[WebSocket] Auth token not found. Cannot connect to ${socketType}.`);
             return null;
         }
 
-        console.log(`🔗 Connecting to ${socketType} WebSocket:`, url);
+        console.log(`[WebSocket] Connecting to ${socketType} at ${url}`);
         const socket = new WebSocket(`${url}?token=${accessToken}`);
 
-        socket.onopen = () => {
-            console.log(`✅ ${socketType} WebSocket connected successfully`);
-            setConnectionStatus(prev => ({ ...prev, [socketType]: 'connected' }));
-        };
-
+        socket.onopen = onOpen;
+        socket.onclose = onClose;
+        socket.onerror = onError;
         socket.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
-                console.log(`📨 ${socketType} message received:`, data);
                 onMessage(data);
-            } catch (error) {
-                console.error(`❌ Error parsing ${socketType} message:`, error);
+            } catch (e) {
+                console.error(`[WebSocket] Error parsing message for ${socketType}:`, e);
             }
-        };        socket.onclose = (event) => {
-            console.log(`🔌 ${socketType} WebSocket closed:`, event.code, event.reason);
-            setConnectionStatus(prev => ({ ...prev, [socketType]: 'disconnected' }));
-            
-            // Reconnect after delay if it wasn't a manual close
-            if (event.code !== 1000 && accessToken && isAuthenticated) {
-                console.log(`🔄 Attempting to reconnect ${socketType} WebSocket in 3 seconds...`);
-                setTimeout(() => connect(url, onMessage, socketType), 3000);
-            }
-        };
-
-        socket.onerror = (error) => {
-            console.error(`❌ ${socketType} WebSocket error:`, error);
-            setConnectionStatus(prev => ({ ...prev, [socketType]: 'error' }));
         };
 
         return socket;
-    }, [accessToken, isAuthenticated]);
+    }, [accessToken]);
 
-    // Notification WebSocket Effect
+
+    // --- Notification WebSocket Effect ---
     useEffect(() => {
-        if (!accessToken || !isAuthenticated) return;
-
-        const handleNotificationMessage = (data) => {
-            switch (data.type) {
-                case 'user_status':
-                    updateOnlineUsers(data.online_users || []);
-                    // Show notification for user status changes
-                    if (data.user_info && data.status) {
-                        notificationService.showUserStatusNotification(
-                            data.user_info.name,
-                            data.status
-                        );
-                    }
-                    break;
-                case 'new_message_notification':
-                    console.log('🔔 New message notification:', data);
-                    break;
-                case 'group_update':
-                    console.log('👥 Group update:', data);
-                    // Show notification for group updates
-                    if (data.message) {
-                        notificationService.showGroupUpdateNotification(data.message);
-                    }
-                    break;
-                case 'group_invite':
-                    console.log('📥 Group invite:', data);
-                    // Show notification for group invites
-                    if (data.group_name && data.inviter_name) {
-                        notificationService.showGroupInviteNotification(
-                            data.group_name,
-                            data.inviter_name
-                        );
-                    }
-                    break;
-                default:
-                    console.log('❓ Unknown notification type:', data);
+        const onOpen = () => setConnectionStatus(prev => ({ ...prev, notifications: 'connected' }));
+        const onClose = () => setConnectionStatus(prev => ({ ...prev, notifications: 'disconnected' }));
+        const onError = (err) => console.error('[WebSocket] Notifications error:', err);
+        const onMessage = (data) => {
+            console.log('[WebSocket] Notification received:', data);
+            if (data.type === 'new_message' && selectedGroup?.id !== data.group_id) {
+                notificationService.showMessageNotification(data.message, data.group_name, data.sender);
+                fetchGroups(); // Refresh list to show unread status
             }
+            // Add other notification types here (e.g., user_status)
         };
-
-        notificationSocketRef.current = connect(
-            WEBSOCKET_URLS.NOTIFICATIONS, 
-            handleNotificationMessage, 
-            'notifications'
-        );
+        
+        notificationSocketRef.current = connectSocket(WEBSOCKET_URLS.NOTIFICATIONS, onMessage, onOpen, onClose, onError, 'notifications');
 
         return () => {
             if (notificationSocketRef.current) {
-                notificationSocketRef.current.close();
+                notificationSocketRef.current.close(1000, "Component unmounting");
                 notificationSocketRef.current = null;
             }
         };
-    }, [connect, accessToken, isAuthenticated, updateOnlineUsers]);
+    }, [accessToken, connectSocket, fetchGroups, selectedGroup?.id]);
 
-    // Chat WebSocket Effect
+
+    // --- Chat Room WebSocket Effect ---
     useEffect(() => {
-        if (!selectedGroup || !accessToken || !isAuthenticated) {
-            if (chatSocketRef.current) {
-                chatSocketRef.current.close();
+        if (!selectedGroup) {
+             if (chatSocketRef.current) {
+                chatSocketRef.current.close(1000, "Leaving group");
                 chatSocketRef.current = null;
             }
             return;
         }
 
-        const handleChatMessage = (data) => {
-            switch (data.type) {
+        const onOpen = () => setConnectionStatus(prev => ({ ...prev, chat: 'connected' }));
+        const onClose = () => setConnectionStatus(prev => ({ ...prev, chat: 'disconnected' }));
+        const onError = (err) => console.error(`[WebSocket] Chat error for group ${selectedGroup.id}:`, err);
+        const onMessage = (data) => {
+            console.log('[WebSocket] Chat message received:', data);
+            switch(data.type) {
                 case 'chat_message':
-                    const newMessage = {
-                        id: data.message_id || new Date().getTime(),
-                        content: data.message,
-                        sender_info: data.sender_info,
-                        sender: data.sender_id,
-                        message_type: data.message_type || 'text',
-                        file_attachment: data.file_attachment,
-                        status: data.status || 'sent',
-                        created_at: data.timestamp || new Date().toISOString(),
-                    };
-                    
-                    addMessage(newMessage);
-                    
-                    // Show notification for new messages from other users
-                    if (data.sender_id !== useAuthStore.getState().user?.id) {
-                        notificationService.showMessageNotification(
-                            newMessage,
-                            selectedGroup?.name || 'Chat',
-                            data.sender_info?.name || 'Someone'
-                        );
-                    }
+                    // The backend should send a complete message object.
+                    // The 'addMessage' function in the store will add it to the state.
+                    addMessage(data);
                     break;
-                case 'typing':
+                case 'typing_indicator':
+                    // This logic correctly handles adding/removing typing users.
                     setTypingUsers(prev => {
-                        const filtered = prev.filter(user => user.id !== data.sender_id);
-                        if (data.is_typing) {
-                            return [...filtered, { id: data.sender_id, name: data.sender_name }];
+                        const isUserTyping = prev.some(u => u.user_id === data.user_id);
+                        if (data.is_typing && !isUserTyping) {
+                            return [...prev, { user_id: data.user_id, name: data.user }];
                         }
-                        return filtered;
+                        if (!data.is_typing && isUserTyping) {
+                            return prev.filter(u => u.user_id !== data.user_id);
+                        }
+                        return prev;
                     });
-                    
-                    // Show typing notification
-                    if (data.is_typing && data.sender_id !== useAuthStore.getState().user?.id) {
-                        notificationService.showTypingNotification(
-                            data.sender_name || 'Someone',
-                            selectedGroup?.name || 'Chat'
-                        );
-                    }
-                    
-                    // Auto-remove typing status after 3 seconds
-                    setTimeout(() => {
-                        setTypingUsers(prev => prev.filter(user => user.id !== data.sender_id));
-                    }, 3000);
                     break;
-                case 'message_status':
-                    updateMessageStatus(data.message_id, data.status);
-                    break;
-                case 'ai_response':
-                    addMessage({
-                        id: data.message_id || new Date().getTime(),
-                        content: data.message,
-                        sender_info: { name: 'AI Assistant', profile_picture: null },
-                        sender: 'ai',
-                        message_type: 'ai_response',
-                        created_at: data.timestamp || new Date().toISOString(),
-                    });
+                case 'error':
+                    // Handle errors sent from the backend consumer
+                    console.error(`[WebSocket] Backend Error: ${data.message}`);
                     break;
                 default:
-                    console.log('❓ Unknown chat message type:', data);
+                    console.warn(`[WebSocket] Unknown message type: ${data.type}`);
             }
         };
 
-        chatSocketRef.current = connect(
-            WEBSOCKET_URLS.CHAT(selectedGroup.id), 
-            handleChatMessage, 
-            'chat'
-        );
+        chatSocketRef.current = connectSocket(WEBSOCKET_URLS.CHAT(selectedGroup.id), onMessage, onOpen, onClose, onError, 'chat');
 
         return () => {
             if (chatSocketRef.current) {
-                chatSocketRef.current.close();
+                chatSocketRef.current.close(1000, "Switching group");
                 chatSocketRef.current = null;
             }
-            setTypingUsers([]);
+            setTypingUsers([]); // Clear typing users when leaving a group
         };
-    }, [selectedGroup, connect, addMessage, updateMessageStatus, accessToken, isAuthenticated]);
+    }, [selectedGroup, accessToken, addMessage, connectSocket]);
 
-    const sendChatMessage = useCallback((message, messageType = 'text') => {
+
+    // --- Functions to send data to WebSockets ---
+
+    const sendChatMessage = useCallback((messageContent) => {
         if (chatSocketRef.current?.readyState === WebSocket.OPEN) {
-            const messageData = {
+            chatSocketRef.current.send(JSON.stringify({
                 type: 'chat_message',
-                message: message,
-                message_type: messageType,
-                timestamp: new Date().toISOString()
-            };
-            
-            console.log('📤 Sending chat message:', messageData);
-            chatSocketRef.current.send(JSON.stringify(messageData));
+                message: messageContent,
+                // The backend consumer will get the sender from the scope
+            }));
             return true;
-        } else {
-            console.error('❌ Chat WebSocket is not connected');
-            return false;
         }
+        console.error('[WebSocket] Cannot send message, chat socket is not open.');
+        return false;
     }, []);
 
-    const sendTypingStatus = useCallback((isTyping = true) => {
+    const sendTypingStatus = useCallback((isTyping) => {
         if (chatSocketRef.current?.readyState === WebSocket.OPEN) {
-            const typingData = {
+            chatSocketRef.current.send(JSON.stringify({
                 type: 'typing',
-                is_typing: isTyping,
-                timestamp: new Date().toISOString()
-            };
-            
-            chatSocketRef.current.send(JSON.stringify(typingData));
-            return true;
+                is_typing: isTyping
+            }));
         }
-        return false;
-    }, []);
-
-    const updateUserStatus = useCallback((status = 'online') => {
-        if (notificationSocketRef.current?.readyState === WebSocket.OPEN) {
-            const statusData = {
-                type: 'user_status',
-                status: status,
-                timestamp: new Date().toISOString()
-            };
-            
-            notificationSocketRef.current.send(JSON.stringify(statusData));
-            return true;
-        }
-        return false;
     }, []);
 
     return { 
         sendChatMessage, 
         sendTypingStatus, 
-        updateUserStatus,
         connectionStatus,
         typingUsers,
-        isConnected: connectionStatus.notifications === 'connected' || connectionStatus.chat === 'connected'
     };
 };

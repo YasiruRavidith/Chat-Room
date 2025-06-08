@@ -33,7 +33,7 @@ export const useChatStore = create((set, get) => ({
     blockUser: async (userId) => {
         try {
             await api.post(API_URLS.BLOCK_USER, { blocked_user_id: userId });
-            await get().fetchBlockedUsers(); // Re-fetch for consistency
+            await get().fetchBlockedUsers();
         } catch (error) {
             console.error("Failed to block user", error);
             throw error;
@@ -43,21 +43,31 @@ export const useChatStore = create((set, get) => ({
     unblockUser: async (userId) => {
         try {
             await api.delete(API_URLS.UNBLOCK_USER(userId));
-            await get().fetchBlockedUsers(); // Re-fetch for consistency
+            await get().fetchBlockedUsers();
         } catch (error) {
             console.error("Failed to unblock user", error);
             throw error;
         }
     },
 
+    // --- THIS IS THE CORRECTED FUNCTION ---
     selectGroup: async (group) => {
+        // Set loading state immediately
         set({ selectedGroup: group, messages: [], loading: true });
+        
         try {
+            // Step 1: Fetch the messages for the selected group.
             const response = await api.get(API_URLS.MESSAGES(group.id));
-            set({ messages: response.data.results || [], loading: false });
+            set({ messages: response.data.results || [] });
+
+            // Step 2: After successfully fetching messages, mark them as read.
+            // This prevents the read (GET) and write (POST) operations from conflicting.
             await api.post(API_URLS.MARK_MESSAGES_READ(group.id));
+
         } catch (error) {
-            console.error("Failed to fetch messages", error);
+            console.error("Failed to fetch messages or mark as read:", error);
+        } finally {
+            // Step 3: Always turn off the loading indicator, even if an error occurs.
             set({ loading: false });
         }
     },
@@ -84,7 +94,7 @@ export const useChatStore = create((set, get) => ({
             console.error("Failed to delete message", error);
             throw error;
         }
-    },    
+    },
     
     createPrivateChat: async (userId, callback) => {
         try {
@@ -101,27 +111,20 @@ export const useChatStore = create((set, get) => ({
         }
     },
 
-    // **This is the corrected and simplified function.**
-    // It now expects a pre-built FormData object and sends it.
     createGroupChat: async (formData) => {
         try {
             const response = await api.post(API_URLS.GROUPS, formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
-            
             const newGroup = response.data;
             set(state => ({
-                // Add the new group to the top of the list
                 groups: [newGroup, ...state.groups]
             }));
-            
-            // Automatically select the newly created group
             get().selectGroup(newGroup);
-            
             return newGroup;
         } catch (error) {
             console.error("Failed to create group chat", error);
-            throw error; // Re-throw the error so the component can catch it
+            throw error;
         }
     },
 
@@ -145,7 +148,7 @@ export const useChatStore = create((set, get) => ({
             set((state) => ({
                 groups: state.groups.filter(g => g.id !== groupId),
                 selectedGroup: state.selectedGroup?.id === groupId ? null : state.selectedGroup,
-                messages: state.selectedGroup?.id === groupId ? [] : state.messages
+                messages: state.selected_group?.id === groupId ? [] : state.messages
             }));
         } catch (error) {
             console.error("Failed to delete chat", error);

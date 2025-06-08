@@ -419,38 +419,33 @@ class MarkMessagesReadView(APIView):
         except Group.DoesNotExist:
             return Response({"error": "Group not found"}, status=status.HTTP_404_NOT_FOUND)
 
-        # Mark all messages in this group as read for this user using atomic transaction
-        with transaction.atomic():
-            messages = Message.objects.filter(group=group).exclude(sender=request.user)
-              # Create list of MessageStatus objects to create/update
-            status_objects = []
-            existing_statuses = MessageStatus.objects.filter(
-                message__in=messages, 
-                user=request.user
-            ).values_list('message_id', flat=True)
-            
-            for message in messages:
-                if message.id not in existing_statuses:
-                    status_objects.append(
-                        MessageStatus(
-                            message=message,
-                            user=request.user,
-                            status='read'
-                        )
-                    )
-                else:
-                    # Update existing status
-                    MessageStatus.objects.filter(
-                        message=message,
-                        user=request.user
-                    ).update(status='read')
-            
-            # Bulk create new status objects
-            if status_objects:
-                MessageStatus.objects.bulk_create(status_objects, ignore_conflicts=True)
-        
-        return Response({"status": "Messages marked as read", "count": messages.count()})
+        # Get all messages in the group not sent by the current user
+        messages_to_mark = Message.objects.filter(group=group).exclude(sender=request.user)
 
+        if not messages_to_mark.exists():
+            return Response({"status": "No messages to mark as read", "count": 0})
+
+        try:
+            # Use a single atomic transaction to perform all updates.
+            with transaction.atomic():
+                # Loop through messages and update or create their status.
+                # This is more resilient to locking than bulk operations in some cases.
+                for message in messages_to_mark:
+                    MessageStatus.objects.update_or_create(
+                        message=message,
+                        user=request.user,
+                        defaults={'status': 'read'}
+                    )
+            
+            return Response({"status": "Messages marked as read", "count": messages_to_mark.count()})
+
+        except Exception as e:
+            # If the transaction fails (e.g., due to a persistent lock), return an error.
+            print(f"Error marking messages as read: {e}")
+            return Response(
+                {"error": "Could not mark messages as read. The service is busy. Please try again shortly."},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE
+            )
 
 # Blocking functionality
 

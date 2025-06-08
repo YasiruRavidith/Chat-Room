@@ -92,6 +92,9 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+        'OPTIONS': {
+            'timeout': 20,
+        },
     }
 }
 
@@ -199,7 +202,7 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 
 # AI Configuration
-GEMINI_API_KEY = config('GEMINI_API_KEY', default='AIzaSyCRtLRbJjbKgYDgCJzosRrF7nBbu5nd1RY')
+GEMINI_API_KEY = config('GEMINI_API_KEY', default='AIzaSyCV0l6OAjN_jNf-yaKu5UF-NJzT43M_kEo')
 
 
 # Security settings for production

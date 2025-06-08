@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import { useChatStore } from '../../store/chatStore';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import ChatHeader from './ChatHeader';
@@ -10,14 +10,40 @@ const ChatWindow = () => {
     const { selectedGroup, messages, loading } = useChatStore();
     const { sendChatMessage, typingUsers, connectionStatus } = useWebSocket();
     const messagesEndRef = useRef(null);
+    const messagesContainerRef = useRef(null);
+    const previousMessageCountRef = useRef(0);
 
-    const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    };
+    const scrollToBottom = useCallback(() => {
+        messagesEndRef.current?.scrollIntoView({ 
+            behavior: "smooth",
+            block: "end"
+        });
+    }, []);
 
+    // Auto-scroll when new messages arrive
     useEffect(() => {
-        scrollToBottom();
-    }, [messages]);
+        const currentMessageCount = messages.length;
+        const previousMessageCount = previousMessageCountRef.current;
+        
+        // Only scroll if new messages were added
+        if (currentMessageCount > previousMessageCount) {
+            // Use setTimeout to ensure DOM has updated
+            setTimeout(() => {
+                scrollToBottom();
+            }, 100);
+        }
+        
+        previousMessageCountRef.current = currentMessageCount;
+    }, [messages, scrollToBottom]);
+
+    // Auto-scroll when switching groups
+    useEffect(() => {
+        if (selectedGroup && messages.length > 0) {
+            setTimeout(() => {
+                scrollToBottom();
+            }, 200);
+        }
+    }, [selectedGroup, scrollToBottom]);
 
     if (loading) {
         return <div className="flex-1 flex justify-center items-center"><Spinner /></div>;
@@ -50,41 +76,49 @@ const ChatWindow = () => {
                 </div>
             </div>
         );
-    }
-
-    return (
+    }    return (
         <div className="flex-1 flex flex-col h-screen">
             <ChatHeader group={selectedGroup} />
             
-            <div className="flex-1 overflow-y-auto p-4 bg-gray-50">
+            <div 
+                ref={messagesContainerRef}
+                className="flex-1 overflow-y-auto p-4 bg-gray-50 scroll-smooth"
+                style={{ scrollBehavior: 'smooth' }}
+            >
                 {messages.length === 0 ? (
                     <div className="text-center text-gray-500 mt-8">
                         <p>No messages yet. Start the conversation!</p>
                     </div>
                 ) : (
-                    messages.map((message) => (
-                        <Message key={message.id} message={message} />
-                    ))
+                    <>
+                        {messages.map((message, index) => (
+                            <Message 
+                                key={`${message.id}-${index}`} 
+                                message={message} 
+                            />
+                        ))}
+                        
+                        {/* Typing Indicator */}
+                        {typingUsers.length > 0 && (
+                            <div className="flex items-center space-x-2 mt-4 text-gray-500 text-sm animate-pulse">
+                                <div className="flex space-x-1">
+                                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
+                                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                                </div>
+                                <span>
+                                    {typingUsers.length === 1 
+                                        ? `${typingUsers[0].name} is typing...`
+                                        : `${typingUsers.length} people are typing...`
+                                    }
+                                </span>
+                            </div>
+                        )}
+                        
+                        {/* Auto-scroll anchor point */}
+                        <div ref={messagesEndRef} className="h-4" />
+                    </>
                 )}
-                
-                {/* Typing Indicator */}
-                {typingUsers.length > 0 && (
-                    <div className="flex items-center space-x-2 mt-4 text-gray-500 text-sm">
-                        <div className="flex space-x-1">
-                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
-                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></div>
-                            <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                        </div>
-                        <span>
-                            {typingUsers.length === 1 
-                                ? `${typingUsers[0].name} is typing...`
-                                : `${typingUsers.length} people are typing...`
-                            }
-                        </span>
-                    </div>
-                )}
-                
-                <div ref={messagesEndRef} />
             </div>
             
             <MessageInput sendChatMessage={sendChatMessage} />

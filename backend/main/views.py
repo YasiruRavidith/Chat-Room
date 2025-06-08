@@ -348,12 +348,14 @@ class MessageListCreateView(generics.ListCreateAPIView):
             logger.info(f"Broadcasted message {message.id} to group {room_group_name}")
         except Exception as e:
             logger.error(f"Failed to broadcast message via WebSocket for group {group_id}: {e}")
-        
-        # --- Handle AI response for offline users ---
+          # --- Handle AI response for offline users ---
         if group.group_type == Group.GroupType.PRIVATE:
             other_member = group.members.exclude(id=self.request.user.id).first()
             if other_member and not other_member.is_online and other_member.offline_mode_enabled:
-                send_ai_response(group, other_member, message.content)
+                # Add a small delay to ensure the user's message is fully processed first
+                from threading import Timer
+                timer = Timer(1.0, lambda: send_ai_response(group, other_member, message.content))
+                timer.start()
 
 class MessageDetailView(generics.RetrieveUpdateDestroyAPIView):
     serializer_class = MessageSerializer

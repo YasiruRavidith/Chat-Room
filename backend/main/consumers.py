@@ -126,8 +126,26 @@ class NotificationConsumer(AsyncWebsocketConsumer):
             )
 
     async def receive(self, text_data):
-        # Handle any notification-related messages if needed
-        pass
+        try:
+            data = json.loads(text_data)
+            message_type = data.get('type')
+            
+            if message_type == 'mark_read':
+                # Handle marking messages as read
+                group_id = data.get('group_id')
+                if group_id:
+                    await self.mark_messages_as_read(group_id)
+            elif message_type == 'get_unread_count':
+                # Send back unread message count
+                unread_count = await self.get_unread_count()
+                await self.send(text_data=json.dumps({
+                    'type': 'unread_count',
+                    'count': unread_count
+                }))
+        except json.JSONDecodeError:
+            logging.error("Invalid JSON received in NotificationConsumer")
+        except Exception as e:
+            logging.error(f"Error in NotificationConsumer receive: {e}")
 
     async def new_message_notification(self, event):
         # Send new message notification

@@ -108,6 +108,7 @@ class AIService:
 
 
 def send_ai_response(group, offline_user, user_message_content):
+    """Send AI response and broadcast it via WebSocket"""
     chat_history = Message.objects.filter(group=group).order_by('-created_at')[:10][::-1]
 
     if not chat_history:
@@ -120,9 +121,44 @@ def send_ai_response(group, offline_user, user_message_content):
         offline_user.offline_ai_message
     )
     
-    Message.objects.create(
+    # Create the AI response message
+    ai_message = Message.objects.create(
         group=group,
         sender=offline_user,
         content=ai_response_content,
         message_type=Message.MessageType.AI_RESPONSE
     )
+      # Broadcast AI response via WebSocket
+    try:
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        from .serializers import MessageSerializer
+        
+        channel_layer = get_channel_layer()
+        if channel_layer:
+            room_group_name = f'chat_{group.id}'
+            
+            # Use the same serialization as in views.py for consistency
+            from django.http import HttpRequest
+            request = HttpRequest()
+            request.user = offline_user  # Set the user for context
+            
+            # Serialize the AI message to get all computed fields
+            message_data = MessageSerializer(ai_message, context={'request': request}).data
+            
+            # The event dictionary to be broadcast (same format as views.py)
+            event = {
+                'type': 'chat_message',  # This matches the consumer method name
+                'message_data': message_data  # Pass the full serialized message
+            }
+            
+            # Send AI response to WebSocket group
+            async_to_sync(channel_layer.group_send)(room_group_name, event)
+            print(f"AI response broadcasted to group {group.id}")
+            
+    except Exception as e:
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"Failed to broadcast AI response via WebSocket: {e}")
+    
+    return ai_message

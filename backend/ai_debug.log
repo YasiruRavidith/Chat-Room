@@ -1,0 +1,133 @@
+
+--- AI Generation Request ---
+GENAI_AVAILABLE: True
+Client available: True
+Config: {'_state': <django.db.models.base.ModelState object at 0x000002616F7D6F90>, 'id': 1, 'api_key': 'AIzaSyCRtLRbJjbKgYDgCJzosRrF7nBbu5nd1RY', 'model_name': 'gemini-pro', 'max_tokens': 1000, 'temperature': 0.6, 'is_active': True, 'created_at': datetime.datetime(2025, 6, 7, 19, 16, 15, 30644, tzinfo=datetime.timezone.utc), 'updated_at': datetime.datetime(2025, 6, 7, 19, 38, 4, 351048, tzinfo=datetime.timezone.utc)}
+System instruction: You are TestUser's AI assistant. TestUser is currently offline. Respond helpfully and in a friendly manner as if you're representing TestUser. Keep responses conversational and not too formal.
+User message: Hello
+Using model: gemini-pro
+Temperature: 0.6
+Max tokens: 1000
+API Key (first 10 chars): AIzaSyCRtL...
+AI Response Error: 404 models/gemini-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+Traceback (most recent call last):
+  File "D:\Stuuuuuuuuupid\Chat Room\Chat Room 2.0\backend\main\ai_service.py", line 89, in generate_response
+    response = model.generate_content(
+        user_message,
+    ...<3 lines>...
+        )
+    )
+  File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\google\generativeai\generative_models.py", line 331, in generate_content
+    response = self._client.generate_content(
+        request,
+        **request_options,
+    )
+  File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\google\ai\generativelanguage_v1beta\services\generative_service\client.py", line 835, in generate_content
+    response = rpc(
+        request,
+    ...<2 lines>...
+        metadata=metadata,
+    )
+  File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\google\api_core\gapic_v1\method.py", line 131, in __call__
+    return wrapped_func(*args, **kwargs)
+  File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\google\api_core\retry\retry_unary.py", line 294, in retry_wrapped_func
+    return retry_target(
+        target,
+    ...<3 lines>...
+        on_error=on_error,
+    )
+  File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\google\api_core\retry\retry_unary.py", line 156, in retry_target
+    next_sleep = _retry_error_helper(
+        exc,
+    ...<6 lines>...
+        timeout,
+    )
+  File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\google\api_core\retry\retry_base.py", line 214, in _retry_error_helper
+    raise final_exc from source_exc
+  File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\google\api_core\retry\retry_unary.py", line 147, in retry_target
+    result = target()
+  File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\google\api_core\timeout.py", line 130, in func_with_timeout
+    return func(*args, **kwargs)
+  File "C:\Users\USER\AppData\Local\Programs\Python\Python313\Lib\site-packages\google\api_core\grpc_helpers.py", line 78, in error_remapped_callable
+    raise exceptions.from_grpc_error(exc) from exc
+google.api_core.exceptions.NotFound: 404 models/gemini-pro is not found for API version v1beta, or is not supported for generateContent. Call ListModels to see the list of available models and their supported methods.
+
+--- AI Generation Request ---
+GENAI_AVAILABLE: True
+Client available: True
+Config: {'_state': <django.db.models.base.ModelState object at 0x000001E05803E710>, 'id': 1, 'api_key': 'AIzaSyCRtLRbJjbKgYDgCJzosRrF7nBbu5nd1RY', 'model_name': 'gemini-1.5-flash', 'max_tokens': 1000, 'temperature': 0.7, 'is_active': True, 'created_at': datetime.datetime(2025, 6, 7, 19, 16, 15, 30644, tzinfo=datetime.timezone.utc), 'updated_at': datetime.datetime(2025, 6, 7, 20, 1, 28, 621525, tzinfo=datetime.timezone.utc)}
+System instruction: You are a helpful assistant.
+User message: Hello world
+Using model: gemini-1.5-flash
+Temperature: 0.7
+Max tokens: 1000
+API Key (first 10 chars): AIzaSyCRtL...
+Response object: response:
+GenerateContentResponse(
+    done=True,
+    iterator=None,
+    result=protos.GenerateContentResponse({
+      "candidates": [
+        {
+          "content": {
+            "parts": [
+              {
+                "text": "Hello to you too!\n"
+              }
+            ],
+            "role": "model"
+          },
+          "finish_reason": "STOP",
+          "avg_logprobs": -0.22722254196802774
+        }
+      ],
+      "usage_metadata": {
+        "prompt_token_count": 8,
+        "candidates_token_count": 6,
+        "total_token_count": 14
+      },
+      "model_version": "gemini-1.5-flash"
+    }),
+)
+Response text exists: True
+Generated AI response: Hello to you too!
+
+--- AI Generation Request ---
+GENAI_AVAILABLE: True
+Client available: True
+Config: {'_state': <django.db.models.base.ModelState object at 0x0000029CC7A32F90>, 'id': 1, 'api_key': 'AIzaSyCRtLRbJjbKgYDgCJzosRrF7nBbu5nd1RY', 'model_name': 'gemini-1.5-flash', 'max_tokens': 1000, 'temperature': 0.7, 'is_active': True, 'created_at': datetime.datetime(2025, 6, 7, 19, 16, 15, 30644, tzinfo=datetime.timezone.utc), 'updated_at': datetime.datetime(2025, 6, 7, 20, 1, 28, 621525, tzinfo=datetime.timezone.utc)}
+System instruction: You are TestUser's AI assistant. TestUser is currently offline. Respond helpfully and in a friendly manner as if you're representing TestUser. Keep responses conversational and not too formal.
+User message: Hello
+Using model: gemini-1.5-flash
+Temperature: 0.7
+Max tokens: 1000
+API Key (first 10 chars): AIzaSyCRtL...
+Response object: response:
+GenerateContentResponse(
+    done=True,
+    iterator=None,
+    result=protos.GenerateContentResponse({
+      "candidates": [
+        {
+          "content": {
+            "parts": [
+              {
+                "text": "Hi there!  How can I help you today?  Let me know what's on your mind.\n"
+              }
+            ],
+            "role": "model"
+          },
+          "finish_reason": "STOP",
+          "avg_logprobs": -0.11180470300757367
+        }
+      ],
+      "usage_metadata": {
+        "prompt_token_count": 41,
+        "candidates_token_count": 23,
+        "total_token_count": 64
+      },
+      "model_version": "gemini-1.5-flash"
+    }),
+)
+Response text exists: True
+Generated AI response: Hi there!  How can I help you today?  Let me know what's on your mind.

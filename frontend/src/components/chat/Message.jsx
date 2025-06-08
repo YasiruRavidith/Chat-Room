@@ -3,13 +3,22 @@ import { useAuthStore } from '../../store/authStore';
 import { formatTimestamp } from '../../lib/utils';
 import Avatar from '../common/Avatar';
 import MessageContextMenu from './MessageContextMenu';
-import { IoCheckmark, IoCheckmarkDone, IoDownload } from 'react-icons/io5';
+// NEW: Import the IoSparkles icon for the AI indicator
+import { IoCheckmark, IoCheckmarkDone, IoDownload, IoSparkles } from 'react-icons/io5';
 
-const Message = ({ message }) => {
+// Wrap the component with React.memo
+const Message = React.memo(({ message }) => {
     const { user } = useAuthStore();
     const [showContextMenu, setShowContextMenu] = useState(false);
     const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
-    const isSender = message.sender === user.id;
+    
+    // The backend sends sender info in different structures for API vs WebSocket
+    const senderId = message.sender || message.sender_id;
+    const isSender = senderId === user.id;
+    const senderInfo = message.sender_info || { name: message.sender_name, profile_picture: null };
+    
+    // NEW: Check if the message is from the AI assistant
+    const isAI = message.message_type === 'ai_response';
 
     const handleContextMenu = (e) => {
         e.preventDefault();
@@ -20,24 +29,25 @@ const Message = ({ message }) => {
     const renderAttachment = (attachment) => {
         if (!attachment) return null;
         
-        const isImage = attachment.includes('image/') || attachment.match(/\.(jpg|jpeg|png|gif|webp)$/i);
-        const fileName = attachment.split('/').pop();
+        const attachmentUrl = attachment.startsWith('http') ? attachment : `${process.env.REACT_APP_API_BASE_URL}${attachment}`;
+        const isImage = attachment.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+        const fileName = attachment.split('/').pop().split('?')[0];
         
         if (isImage) {
             return (
                 <div className="mt-2">
                     <img 
-                        src={attachment} 
+                        src={attachmentUrl} 
                         alt="Attachment" 
                         className="max-w-xs rounded-lg cursor-pointer hover:opacity-90"
-                        onClick={() => window.open(attachment, '_blank')}
+                        onClick={() => window.open(attachmentUrl, '_blank')}
                     />
                 </div>
             );
         } else {
             return (
-                <div className="mt-2 p-2 bg-gray-100 rounded-lg flex items-center space-x-2 cursor-pointer hover:bg-gray-200"
-                     onClick={() => window.open(attachment, '_blank')}>
+                <div className={`mt-2 p-2 rounded-lg flex items-center space-x-2 cursor-pointer ${isAI ? 'bg-purple-200/50 hover:bg-purple-200' : 'bg-gray-100 hover:bg-gray-200'}`}
+                     onClick={() => window.open(attachmentUrl, '_blank')}>
                     <IoDownload className="text-gray-600" />
                     <span className="text-sm text-gray-700">{fileName}</span>
                 </div>
@@ -51,24 +61,55 @@ const Message = ({ message }) => {
         const status = message.status || 'sent';
         return (
             <div className="inline-flex items-center ml-1">
-                {status === 'delivered' && <IoCheckmark className="text-gray-400 text-xs" />}
+                {status === 'sent' && <IoCheckmark className="text-gray-400 text-xs" />}
+                {status === 'delivered' && <IoCheckmarkDone className="text-gray-400 text-xs" />}
                 {status === 'read' && <IoCheckmarkDone className="text-blue-400 text-xs" />}
             </div>
         );
-    };    return (
+    };
+
+    if (!message || !message.created_at) {
+        return null;
+    }
+
+    // UPDATED: Determine message bubble style based on sender and AI status
+    const getBubbleClasses = () => {
+        if (isSender) {
+            return 'bg-blue-500 text-white';
+        }
+        if (isAI) {
+            // A nice gradient for AI messages
+            return 'bg-gradient-to-r from-purple-100 to-blue-100 text-gray-800';
+        }
+        return 'bg-gray-200 text-gray-800';
+    };
+
+    return (
         <div className={`flex items-start my-2 ${isSender ? 'justify-end' : ''}`}>
-            {!isSender && <Avatar src={message.sender_info?.profile_picture} size={8} />}
+            {/* If it's an AI message, show a sparkle icon instead of the user's avatar */}
+            {!isSender && (
+                isAI ? (
+                    <div className="w-8 h-8 flex items-center justify-center rounded-full bg-purple-200">
+                        <IoSparkles className="text-purple-600" />
+                    </div>
+                ) : (
+                    <Avatar src={senderInfo?.profile_picture} size={8} />
+                )
+            )}
+
             <div className={`mx-2 max-w-lg`}>
                 {!isSender && (
-                    <p className="text-xs text-gray-500 mb-1">{message.sender_info?.name}</p>
+                    // UPDATED: Add a sparkle icon next to the name for AI messages
+                    <p className="text-xs text-gray-500 mb-1 flex items-center">
+                        {senderInfo?.name}
+                        {isAI && <span className="ml-1.5 font-semibold text-purple-600">(AI Assistant)</span>}
+                    </p>
                 )}
                 <div
-                    className={`px-4 py-2 rounded-lg cursor-pointer ${
-                        isSender ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-800'
-                    }`}
+                    className={`px-4 py-2 rounded-lg cursor-pointer ${getBubbleClasses()}`}
                     onContextMenu={handleContextMenu}
                 >
-                    {message.content && <p className="text-sm">{message.content}</p>}
+                    {message.content && <p className="text-sm break-words">{message.content}</p>}
                     {renderAttachment(message.file_attachment)}
                 </div>
                 <div className={`flex items-center text-xs text-gray-400 mt-1 ${isSender ? 'justify-end' : 'justify-start'}`}>
@@ -85,6 +126,6 @@ const Message = ({ message }) => {
             />
         </div>
     );
-};
+});
 
 export default Message;

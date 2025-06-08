@@ -28,7 +28,8 @@ SECRET_KEY = config('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=lambda v: [s.strip() for s in v.split(',')])
+# ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='localhost,127.0.0.1', cast=lambda v: [s.strip() for s in v.split(',')])
+ALLOWED_HOSTS = config('.vercel.app')
 
 # Application definition
 DJANGO_APPS = [
@@ -202,7 +203,7 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 DATA_UPLOAD_MAX_MEMORY_SIZE = 10 * 1024 * 1024  # 10MB
 
 # AI Configuration
-GEMINI_API_KEY = config('GEMINI_API_KEY', default='AIzaSyCV0l6OAjN_jNf-yaKu5UF-NJzT43M_kEo')
+GEMINI_API_KEY = config('GEMINI_API_KEY')
 
 
 # Security settings for production

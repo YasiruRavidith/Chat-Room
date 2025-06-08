@@ -1,5 +1,7 @@
-import React, { useState, useRef, useCallback } from 'react';
-import { IoSend, IoAttach, IoClose, IoImage, IoDocument } from 'react-icons/io5';
+// filepath: src/components/chat/MessageInput.jsx
+
+import React, { useState, useRef, useCallback, useEffect } from 'react';
+import { IoSend, IoAttach, IoClose, IoDocument } from 'react-icons/io5';
 import api from '../../api';
 import { API_URLS } from '../../api/urls';
 import { useChatStore } from '../../store/chatStore';
@@ -16,38 +18,36 @@ const MessageInput = () => {
     const selectedGroup = useChatStore(state => state.selectedGroup);
     const { sendTypingStatus } = useWebSocket();
 
+    // THIS FUNCTION IS CORRECT. It relies on the server to broadcast the message.
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (!content.trim() && !file) return;
+        if ((!content.trim() && !file) || !selectedGroup) return;
 
         setSending(true);
-        
-        // Stop typing indicator
         sendTypingStatus(false);
-        if (typingTimeoutRef.current) {
-            clearTimeout(typingTimeoutRef.current);
-        }
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
         
         try {
             const formData = new FormData();
             formData.append('group', selectedGroup.id);
-            if (content.trim()) {
-                formData.append('content', content);
-            }
-            if (file) {
-                formData.append('file_attachment', file);
-            }
+            if (content.trim()) formData.append('content', content);
+            if (file) formData.append('file_attachment', file);
 
+            // 1. Send the message to the server via HTTP POST.
+            // The server will save it and then broadcast it via WebSocket.
             await api.post(API_URLS.MESSAGES(selectedGroup.id), formData, {
                 headers: { 'Content-Type': 'multipart/form-data' },
             });
 
+            // 2. The UI will update automatically when the WebSocket hook receives the broadcast.
+            //    We do NOT need to manually call `addMessage` here.
+
+            // 3. Clear the input fields for the next message.
             setContent('');
             setFile(null);
             setFilePreview(null);
-            if (fileInputRef.current) {
-                fileInputRef.current.value = '';
-            }
+            if (fileInputRef.current) fileInputRef.current.value = '';
+
         } catch (error) {
             toast.error("Failed to send message.");
             console.error(error);
@@ -56,43 +56,28 @@ const MessageInput = () => {
         }
     };
 
+    // --- The rest of the component is also correct ---
+
     const handleContentChange = useCallback((e) => {
         const newContent = e.target.value;
         setContent(newContent);
-
-        // Send typing indicator
+        if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
         if (newContent.trim()) {
             sendTypingStatus(true);
-            
-            // Clear previous timeout
-            if (typingTimeoutRef.current) {
-                clearTimeout(typingTimeoutRef.current);
-            }
-            
-            // Stop typing indicator after 1 second of inactivity
-            typingTimeoutRef.current = setTimeout(() => {
-                sendTypingStatus(false);
-            }, 1000);
+            typingTimeoutRef.current = setTimeout(() => sendTypingStatus(false), 2000);
         } else {
             sendTypingStatus(false);
-            if (typingTimeoutRef.current) {
-                clearTimeout(typingTimeoutRef.current);
-            }
         }
     }, [sendTypingStatus]);
+
     const handleFileChange = (e) => {
         const selectedFile = e.target.files[0];
         if (!selectedFile) return;
-
-        // Check file size (10MB limit)
         if (selectedFile.size > 10 * 1024 * 1024) {
             toast.error('File size must be less than 10MB');
             return;
         }
-
         setFile(selectedFile);
-
-        // Create preview for images
         if (selectedFile.type.startsWith('image/')) {
             const reader = new FileReader();
             reader.onload = (e) => setFilePreview(e.target.result);
@@ -105,29 +90,25 @@ const MessageInput = () => {
     const removeFile = () => {
         setFile(null);
         setFilePreview(null);
-        if (fileInputRef.current) {
-            fileInputRef.current.value = '';
-        }
-    };    const handleKeyPress = (e) => {
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+
+    const handleKeyPress = (e) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             handleSubmit(e);
         }
     };
 
-    // Cleanup typing timeout on unmount
-    React.useEffect(() => {
+    useEffect(() => {
         return () => {
-            if (typingTimeoutRef.current) {
-                clearTimeout(typingTimeoutRef.current);
-            }
-            sendTypingStatus(false);
+            if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
         };
-    }, [sendTypingStatus]);
+    }, []);
+
 
     return (
         <div className="p-4 bg-white border-t border-gray-200">
-            {/* File Preview */}
             {file && (
                 <div className="mb-3 p-3 bg-gray-50 rounded-lg">
                     <div className="flex items-center justify-between">
@@ -144,10 +125,7 @@ const MessageInput = () => {
                                 <p className="text-xs text-gray-500">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
                             </div>
                         </div>
-                        <button
-                            onClick={removeFile}
-                            className="p-1 text-gray-500 hover:text-red-500 rounded-full hover:bg-gray-200"
-                        >
+                        <button onClick={removeFile} className="p-1 text-gray-500 hover:text-red-500 rounded-full hover:bg-gray-200">
                             <IoClose size={20} />
                         </button>
                     </div>
@@ -155,20 +133,10 @@ const MessageInput = () => {
             )}
 
             <form onSubmit={handleSubmit} className="flex items-end space-x-3">
-                <input 
-                    ref={fileInputRef}
-                    type="file" 
-                    id="file-upload" 
-                    className="hidden" 
-                    onChange={handleFileChange}
-                    accept="image/*,.pdf,.doc,.docx,.txt"
-                />
-                <label 
-                    htmlFor="file-upload" 
-                    className="p-2 text-gray-500 hover:text-blue-500 cursor-pointer transition-colors"
-                >
+                <label htmlFor="file-upload" className="p-2 text-gray-500 hover:text-blue-500 cursor-pointer transition-colors">
                     <IoAttach size={24} />
                 </label>
+                <input ref={fileInputRef} type="file" id="file-upload" className="hidden" onChange={handleFileChange} accept="image/*,.pdf,.doc,.docx,.txt,.zip" />
                 
                 <div className="flex-1">
                     <textarea
@@ -181,7 +149,7 @@ const MessageInput = () => {
                         style={{ minHeight: '40px', maxHeight: '120px' }}
                         onInput={(e) => {
                             e.target.style.height = 'auto';
-                            e.target.style.height = Math.min(e.target.scrollHeight, 120) + 'px';
+                            e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
                         }}
                     />
                 </div>

@@ -24,15 +24,68 @@ export const useChatStore = create((set, get) => ({
     fetchBlockedUsers: async () => {
         try {
             const response = await api.get(API_URLS.BLOCKED_USERS);
-            set({ blockedUsers: response.data.results || [] });
+            // The response for blocked users is a list of `BlockedUser` objects
+            // We need to extract the actual user from `blocked_user` field
+            const extractedUsers = response.data.map(item => item.blocked_user);
+            set({ blockedUsers: extractedUsers || [] });
         } catch (error) {
             console.error("Failed to fetch blocked users", error);
         }
     },
+    
+    // --- THIS IS THE CORRECTED selectGroup FUNCTION ---
+    selectGroup: async (group) => {
+        // Set loading state immediately to give user feedback
+        set({ selectedGroup: group, messages: [], loading: true });
+        
+        try {
+            // Step 1: Fetch the messages for the selected group.
+            const response = await api.get(API_URLS.MESSAGES(group.id));
+            set({ messages: response.data.results || [] });
 
+            // Step 2: After successfully fetching messages, mark them as read.
+            // This prevents a potential race condition or database lock (especially in SQLite).
+            await api.post(API_URLS.MARK_MESSAGES_READ(group.id));
+
+            // Step 3: Refresh the groups list in the background to update unread counts.
+            get().fetchGroups();
+
+        } catch (error)
+        {
+            console.error("Failed to fetch messages or mark as read:", error);
+            // Even if it fails, show an empty message list.
+            set({ messages: [] });
+        } finally {
+            // Step 4: Always turn off the loading indicator.
+            set({ loading: false });
+        }
+    },
+
+    // --- THIS IS THE CORRECTED addMessage FUNCTION ---
+    addMessage: (newMessage) => {
+        // A message object from the WebSocket broadcast should have a unique ID.
+        // We use this to prevent adding the same message twice.
+        const messageId = newMessage.id || newMessage.message_id;
+
+        set((state) => {
+            // Check if a message with the same ID already exists.
+            const messageExists = state.messages.some(msg => msg.id === messageId);
+
+            if (messageExists) {
+                // If it already exists, do nothing. Just return the current state.
+                console.log(`[ChatStore] Duplicate message ${messageId} ignored.`);
+                return state;
+            }
+            
+            // If it's a new message, add it to the end of the array.
+            return { messages: [...state.messages, newMessage] };
+        });
+    },
+
+    // ... The rest of your functions are correct ...
     blockUser: async (userId) => {
         try {
-            await api.post(API_URLS.BLOCK_USER, { blocked_user_id: userId });
+            await api.post(API_URLS.BLOCK_USER, { user_id: userId });
             await get().fetchBlockedUsers();
         } catch (error) {
             console.error("Failed to block user", error);
@@ -42,6 +95,7 @@ export const useChatStore = create((set, get) => ({
 
     unblockUser: async (userId) => {
         try {
+            // Unblock uses DELETE method on a specific URL
             await api.delete(API_URLS.UNBLOCK_USER(userId));
             await get().fetchBlockedUsers();
         } catch (error) {
@@ -49,33 +103,7 @@ export const useChatStore = create((set, get) => ({
             throw error;
         }
     },
-
-    // --- THIS IS THE CORRECTED FUNCTION ---
-    selectGroup: async (group) => {
-        // Set loading state immediately
-        set({ selectedGroup: group, messages: [], loading: true });
-        
-        try {
-            // Step 1: Fetch the messages for the selected group.
-            const response = await api.get(API_URLS.MESSAGES(group.id));
-            set({ messages: response.data.results || [] });
-
-            // Step 2: After successfully fetching messages, mark them as read.
-            // This prevents the read (GET) and write (POST) operations from conflicting.
-            await api.post(API_URLS.MARK_MESSAGES_READ(group.id));
-
-        } catch (error) {
-            console.error("Failed to fetch messages or mark as read:", error);
-        } finally {
-            // Step 3: Always turn off the loading indicator, even if an error occurs.
-            set({ loading: false });
-        }
-    },
-
-    addMessage: (message) => {
-        set((state) => ({ messages: [...state.messages, message] }));
-    },
-
+    
     updateMessageStatus: (messageId, status) => {
         set((state) => ({
             messages: state.messages.map(msg => 
@@ -148,7 +176,7 @@ export const useChatStore = create((set, get) => ({
             set((state) => ({
                 groups: state.groups.filter(g => g.id !== groupId),
                 selectedGroup: state.selectedGroup?.id === groupId ? null : state.selectedGroup,
-                messages: state.selected_group?.id === groupId ? [] : state.messages
+                messages: state.selectedGroup?.id === groupId ? [] : state.messages
             }));
         } catch (error) {
             console.error("Failed to delete chat", error);

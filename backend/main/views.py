@@ -15,7 +15,12 @@ from .serializers import (
 )
 from .models import User, Group, Message, GroupMembership, BlockedUser, MessageStatus, AIConfiguration
 from .ai_service import send_ai_response
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 # User views
 
@@ -296,8 +301,9 @@ class MessageListCreateView(generics.ListCreateAPIView):
     def get_queryset(self):
         group_id = self.kwargs.get('group_id')
         try:
-            group = Group.objects.get(id=group_id, members=self.request.user)
-            return Message.objects.filter(group=group, is_deleted=False).order_by('created_at')
+            # Ensure the user is a member before allowing them to see messages.
+            Group.objects.get(id=group_id, members=self.request.user)
+            return Message.objects.filter(group_id=group_id, is_deleted=False).order_by('created_at')
         except Group.DoesNotExist:
             return Message.objects.none()
 
@@ -306,18 +312,18 @@ class MessageListCreateView(generics.ListCreateAPIView):
         try:
             group = Group.objects.get(id=group_id, members=self.request.user)
         except Group.DoesNotExist:
-            return Response({"error": "Group not found"}, status=status.HTTP_404_NOT_FOUND)
+            # This should ideally not be reached if get_queryset is implemented, but as a safeguard.
+            return Response({"error": "Group not found or you are not a member."}, status=status.HTTP_404_NOT_FOUND)
 
-        # Handle file attachments
         file_attachment = self.request.FILES.get('file_attachment')
         message_type = Message.MessageType.TEXT
-        
         if file_attachment:
             if file_attachment.content_type.startswith('image/'):
                 message_type = Message.MessageType.IMAGE
             else:
                 message_type = Message.MessageType.FILE
-
+        
+        # Save the message instance to the database
         message = serializer.save(
             sender=self.request.user,
             group=group,
@@ -326,44 +332,40 @@ class MessageListCreateView(generics.ListCreateAPIView):
             file_size=file_attachment.size if file_attachment else None
         )
 
-        # Update group's updated_at timestamp
+        # Update the group's `updated_at` to bring it to the top of the list
         group.save()
-        
-        # Broadcast message via WebSocket if channels is available
+
+        # --- BROADCAST THE NEW MESSAGE VIA WEBSOCKET ---
         try:
-            from channels.layers import get_channel_layer
-            from asgiref.sync import async_to_sync
-            
             channel_layer = get_channel_layer()
             if channel_layer:
-                room_group_name = f'chat_{group_id}'                # Prepare message data for WebSocket
-                message_data = {
-                    'type': 'chat_message',
-                    'message_id': message.id,
-                    'message': message.content,
-                    'sender_info': {
-                        'id': self.request.user.id,
-                        'username': self.request.user.username,
-                        'name': self.request.user.name
-                    },
-                    'sender_id': self.request.user.id,
-                    'message_type': message.message_type,
-                    'file_attachment': message.file_attachment.url if message.file_attachment else None,
-                    'timestamp': message.created_at.isoformat()
+                room_group_name = f'chat_{group_id}'
+                
+                # Re-serialize the message to get all computed fields (like file_url)
+                # Pass the request context to the serializer to build full URLs
+                message_serializer = MessageSerializer(message, context={'request': self.request})
+                
+                # The payload sent to the channel layer
+                broadcast_data = {
+                    'type': 'chat_message', # This MUST match the method name in the consumer
+                    **message_serializer.data # Unpack the full serialized message
                 }
                 
-                # Send message to WebSocket group
-                async_to_sync(channel_layer.group_send)(room_group_name, message_data)
+                # Use async_to_sync to call the async channel layer from the sync view
+                async_to_sync(channel_layer.group_send)(
+                    room_group_name,
+                    broadcast_data
+                )
+                logger.info(f"Broadcasted message {message.id} to group {room_group_name}")
         except Exception as e:
-            # Log the error but don't fail the message creation
-            import logging
-            logger = logging.getLogger(__name__)
-            logger.warning(f"Failed to broadcast message via WebSocket: {e}")
+            # Log the error but don't fail the request. The message is already saved.
+            logger.error(f"Failed to broadcast message via WebSocket for group {group_id}: {e}")
         
-        # Check if recipient is offline and has AI mode enabled
+        # --- Handle AI response for offline users (This part was likely already correct) ---
         if group.group_type == Group.GroupType.PRIVATE:
             other_member = group.members.exclude(id=self.request.user.id).first()
             if other_member and not other_member.is_online and other_member.offline_mode_enabled:
+                # Use the content from the saved message object
                 send_ai_response(group, other_member, message.content)
 
 

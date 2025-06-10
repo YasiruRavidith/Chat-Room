@@ -1,7 +1,0 @@
-Testing AI Service...
-AI service initialized: True
-Config exists: True
-Client available: True
-Testing AI response...
-Response: Hi there!  How can I help you today?
-SUCCESS: AI generated a real response!

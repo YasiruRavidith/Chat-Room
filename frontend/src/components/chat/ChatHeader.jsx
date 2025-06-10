@@ -5,10 +5,10 @@ import { getPrivateChatName } from '../../lib/utils';
 import Avatar from '../common/Avatar';
 import UserInfoModal from './UserInfoModal';
 import GroupInfoModal from './GroupInfoModal';
-import { IoEllipsisVertical, IoTrash, IoExitOutline, IoInformationCircle } from 'react-icons/io5';
+import { IoEllipsisVertical, IoTrash, IoExitOutline, IoInformationCircle, IoMenuOutline } from 'react-icons/io5';
 import { toast } from 'react-hot-toast';
 
-const ChatHeader = ({ group }) => {
+const ChatHeader = ({ group, onToggleSidebar }) => {
     const [showDropdown, setShowDropdown] = useState(false);
     const [showUserInfo, setShowUserInfo] = useState(false);
     const [showGroupInfo, setShowGroupInfo] = useState(false);
@@ -57,19 +57,26 @@ const ChatHeader = ({ group }) => {
             const onlineCount = group.members?.filter(member => member.is_online)?.length || 0;
             return `${memberCount} members, ${onlineCount} online`;
         }
-    };
-
-    return (
-        <div className="p-4 border-b border-gray-200 flex items-center justify-between bg-white">
-            <div className="flex items-center space-x-4">
+    };    return (
+        <div className="flex-shrink-0 p-4 border-b border-gray-200 flex items-center justify-between bg-white">
+            <div className="flex items-center space-x-3">
+                {/* Mobile sidebar toggle button */}
+                <button
+                    onClick={onToggleSidebar}
+                    className="md:hidden p-2 text-gray-500 hover:text-blue-600 transition-colors rounded-lg hover:bg-gray-100"
+                    aria-label="Toggle sidebar"
+                >
+                    <IoMenuOutline size={24} />
+                </button>
+                
                 <Avatar 
                     src={isPrivateChat ? otherMember?.profile_picture : group.group_picture} 
                     size={10} 
                     isOnline={isPrivateChat ? otherMember?.is_online : undefined}
                 />
-                <div>
-                    <h2 className="text-xl font-semibold text-gray-800">{displayName}</h2>
-                    <p className="text-sm text-gray-500">{getStatusText()}</p>
+                <div className="min-w-0 flex-1">
+                    <h2 className="text-lg md:text-xl font-semibold text-gray-800 truncate">{displayName}</h2>
+                    <p className="text-sm text-gray-500 truncate">{getStatusText()}</p>
                 </div>
             </div>
 

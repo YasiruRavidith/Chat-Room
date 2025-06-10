@@ -28,7 +28,7 @@ SECRET_KEY = config('SECRET_KEY')
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = config('DEBUG', default=True, cast=bool)
 
-ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='192.168.1.104', cast=lambda v: [s.strip() for s in v.split(',')])
+ALLOWED_HOSTS = config('ALLOWED_HOSTS', default='192.168.1.101', cast=lambda v: [s.strip() for s in v.split(',')])
 #ALLOWED_HOSTS = config('.vercel.app')
 
 # Application definition
@@ -175,7 +175,7 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "http://localhost:5173", 
-    "http://192.168.1.104:5173/",
+    "http://192.168.1.101:5173/",
 ]
 
 CORS_ALLOW_CREDENTIALS = True

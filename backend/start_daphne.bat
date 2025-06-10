@@ -1,3 +1,0 @@
-@echo off
-echo Starting Daphne ASGI server...
-python -m daphne -p 8000 backend.asgi:application

@@ -3,14 +3,18 @@ import { useAuthStore } from '../../store/authStore';
 import { formatTimestamp } from '../../lib/utils';
 import Avatar from '../common/Avatar';
 import MessageContextMenu from './MessageContextMenu';
-// NEW: Import the IoSparkles icon for the AI indicator
-import { IoCheckmark, IoCheckmarkDone, IoDownload, IoSparkles } from 'react-icons/io5';
+import { useMessageVisibility } from '../../hooks/useMessageVisibility';
+// Import icons for read status indicators
+import { IoCheckmark, IoCheckmarkDone, IoDownload, IoSparkles, IoEyeOutline, IoEye } from 'react-icons/io5';
 
 // Wrap the component with React.memo
 const Message = React.memo(({ message }) => {
     const { user } = useAuthStore();
     const [showContextMenu, setShowContextMenu] = useState(false);
     const [contextMenuPosition, setContextMenuPosition] = useState({ x: 0, y: 0 });
+    
+    // Use the visibility hook for automatic read marking
+    const messageRef = useMessageVisibility(message);
     
     // The backend sends sender info in different structures for API vs WebSocket
     const senderId = message.sender || message.sender_id;
@@ -53,26 +57,45 @@ const Message = React.memo(({ message }) => {
                 </div>
             );
         }
-    };
-
-    const renderReadStatus = () => {
-        if (!isSender) return null;
+    };    const renderReadStatus = () => {
+        if (isAI) return null; // Don't show read status for AI messages
         
-        const status = message.status || 'sent';
-        return (
-            <div className="inline-flex items-center ml-1">
-                {status === 'sent' && <IoCheckmark className="text-gray-400 text-xs" />}
-                {status === 'delivered' && <IoCheckmarkDone className="text-gray-400 text-xs" />}
-                {status === 'read' && <IoCheckmarkDone className="text-blue-400 text-xs" />}
-            </div>
-        );
+        if (isSender) {
+            // For sender's messages, show delivery/read status
+            const status = message.read_status || message.status || 'sent';
+            const readBy = message.read_by || [];
+            
+            return (
+                <div className="inline-flex items-center ml-1" title={`Status: ${status}${readBy.length > 0 ? ` • Read by ${readBy.length} user(s)` : ''}`}>
+                    {status === 'sent' && <IoCheckmark className="text-gray-400 text-xs" />}
+                    {status === 'delivered' && <IoCheckmarkDone className="text-gray-400 text-xs" />}
+                    {status === 'read' && <IoCheckmarkDone className="text-blue-400 text-xs" />}
+                    {readBy.length > 0 && (
+                        <span className="text-xs text-blue-400 ml-1">
+                            {readBy.length}
+                        </span>
+                    )}
+                </div>
+            );
+        } else {
+            // For received messages, show read/unread indicator
+            const isRead = message.is_read_by_current_user;
+            
+            return (
+                <div className="inline-flex items-center ml-1" title={isRead ? 'Read' : 'Unread'}>
+                    {isRead ? (
+                        <IoEye className="text-blue-400 text-xs" />
+                    ) : (
+                        <IoEyeOutline className="text-gray-400 text-xs" />
+                    )}
+                </div>
+            );
+        }
     };
 
     if (!message || !message.created_at) {
         return null;
-    }
-
-    // UPDATED: Determine message bubble style based on sender and AI status
+    }    // UPDATED: Determine message bubble style based on sender, AI status, and read status
     const getBubbleClasses = () => {
         if (isSender) {
             return 'bg-blue-500 text-white';
@@ -81,11 +104,16 @@ const Message = React.memo(({ message }) => {
             // A nice gradient for AI messages
             return 'bg-gradient-to-r from-purple-100 to-blue-100 text-gray-800';
         }
-        return 'bg-gray-200 text-gray-800';
-    };
-
-    return (
-        <div className={`flex items-start my-2 ${isSender ? 'justify-end' : ''}`}>
+        
+        // For received messages, add subtle styling based on read status
+        const isRead = message.is_read_by_current_user;
+        if (isRead) {
+            return 'bg-gray-200 text-gray-800';
+        } else {
+            return 'bg-gray-200 text-gray-800 border-l-4 border-blue-400';
+        }
+    };    return (
+        <div ref={messageRef} className={`flex items-start my-2 ${isSender ? 'justify-end' : ''}`}>
             {/* If it's an AI message, show a sparkle icon instead of the user's avatar */}
             {!isSender && (
                 isAI ? (
@@ -95,15 +123,24 @@ const Message = React.memo(({ message }) => {
                 ) : (
                     <Avatar src={senderInfo?.profile_picture} size={8} />
                 )
-            )}
-
-            <div className={`mx-2 max-w-lg`}>
+            )}            <div className={`mx-2 max-w-lg`}>
                 {!isSender && (
-                    // UPDATED: Add a sparkle icon next to the name for AI messages
-                    <p className="text-xs text-gray-500 mb-1 flex items-center">
-                        {senderInfo?.name}
-                        {isAI && <span className="ml-1.5 font-semibold text-purple-600">(AI Assistant)</span>}
-                    </p>
+                    // UPDATED: Add read status indicator next to sender name for received messages
+                    <div className="flex items-center justify-between mb-1">
+                        <p className="text-xs text-gray-500 flex items-center">
+                            {senderInfo?.name}
+                            {isAI && <span className="ml-1.5 font-semibold text-purple-600">(AI Assistant)</span>}
+                        </p>
+                        {!isAI && (
+                            <div className="flex items-center">
+                                {message.is_read_by_current_user ? (
+                                    <span className="text-xs text-blue-500 font-medium">Read</span>
+                                ) : (
+                                    <span className="text-xs text-gray-400 font-medium">Unread</span>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 )}
                 <div
                     className={`px-4 py-2 rounded-lg cursor-pointer ${getBubbleClasses()}`}

@@ -59,12 +59,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
                 )
         except Exception as e:
             logging.error(f"Error in ChatConsumer receive: {e}")
-
-
     # This method is called by the broadcast from views.py
     async def chat_message(self, event):
         message_data = event['message_data']
         await self.send(text_data=json.dumps(message_data))
+
+    # Handle message status updates (read/delivered status changes)
+    async def message_status_update(self, event):
+        await self.send(text_data=json.dumps(event))
 
     async def typing_indicator(self, event):
         if event.get('user_id') != self.user.id:

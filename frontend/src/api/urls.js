@@ -1,5 +1,5 @@
-const API_BASE_URL = 'http://192.168.1.104:8000/api';
-const WS_BASE_URL = 'ws://192.168.1.104:8000';
+const API_BASE_URL = 'http://192.168.1.101:8000/api';
+const WS_BASE_URL = 'ws://192.168.1.101:8000';
 
 export const API_URLS = {
     BASE: API_BASE_URL,
@@ -24,10 +24,10 @@ export const API_URLS = {
     LEAVE_GROUP: (groupId) => `${API_BASE_URL}/groups/${groupId}/leave/`,
     DELETE_GROUP: (groupId) => `${API_BASE_URL}/groups/${groupId}/`,
     REMOVE_MEMBER: (groupId) => `${API_BASE_URL}/groups/${groupId}/remove-member/`,
-    
-    // Messages
+      // Messages
     MESSAGES: (groupId) => `${API_BASE_URL}/groups/${groupId}/messages/`,
     DELETE_MESSAGE: (messageId) => `${API_BASE_URL}/messages/${messageId}/`,
+    MESSAGE_STATUS: (messageId) => `${API_BASE_URL}/messages/${messageId}/status/`,
     MARK_MESSAGES_READ: (groupId) => `${API_BASE_URL}/groups/${groupId}/messages/read/`,
     
     // AI

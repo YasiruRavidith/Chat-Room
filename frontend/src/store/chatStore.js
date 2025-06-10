@@ -59,9 +59,7 @@ export const useChatStore = create((set, get) => ({
             // Step 4: Always turn off the loading indicator.
             set({ loading: false });
         }
-    },
-
-    // --- THIS IS THE CORRECTED addMessage FUNCTION ---
+    },    // --- THIS IS THE CORRECTED addMessage FUNCTION ---
     addMessage: (newMessage) => {
         // A message object from the WebSocket broadcast should have a unique ID.
         // We use this to prevent adding the same message twice.
@@ -78,7 +76,17 @@ export const useChatStore = create((set, get) => ({
             }
             
             // If it's a new message, add it to the end of the array.
-            return { messages: [...state.messages, newMessage] };
+            const newState = { messages: [...state.messages, newMessage] };
+            
+            // Refresh groups list to update unread counts (only if message is not for currently selected group)
+            if (!state.selectedGroup || newMessage.group !== state.selectedGroup.id) {
+                // Delay the refresh slightly to allow message to be processed in backend
+                setTimeout(() => {
+                    get().fetchGroups();
+                }, 500);
+            }
+            
+            return newState;
         });
     },
 
@@ -103,11 +111,38 @@ export const useChatStore = create((set, get) => ({
             throw error;
         }
     },
-    
-    updateMessageStatus: (messageId, status) => {
+      updateMessageStatus: (messageId, status) => {
         set((state) => ({
             messages: state.messages.map(msg => 
-                msg.id === messageId ? { ...msg, status } : msg
+                msg.id === messageId ? { 
+                    ...msg, 
+                    status,
+                    read_status: status,
+                    is_read_by_current_user: status === 'read'
+                } : msg
+            )
+        }));
+    },
+
+    // Enhanced function to mark a specific message as read
+    markMessageAsRead: async (messageId) => {
+        try {
+            await api.post(API_URLS.MESSAGE_STATUS(messageId), { status: 'read' });
+            get().updateMessageStatus(messageId, 'read');
+        } catch (error) {
+            console.error("Failed to mark message as read", error);
+        }
+    },
+
+    // Enhanced function to update read status for received messages
+    updateMessageReadStatus: (messageId, isRead) => {
+        set((state) => ({
+            messages: state.messages.map(msg => 
+                msg.id === messageId ? { 
+                    ...msg, 
+                    is_read_by_current_user: isRead,
+                    read_status: isRead ? 'read' : 'delivered'
+                } : msg
             )
         }));
     },

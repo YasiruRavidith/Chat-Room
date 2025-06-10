@@ -395,6 +395,26 @@ class MessageStatusView(APIView):
             defaults={'status': status_value}
         )
         
+        # Broadcast read status update to all group members via WebSocket
+        try:
+            channel_layer = get_channel_layer()
+            room_group_name = f'chat_{message.group.id}'
+            
+            # Create status update event
+            event = {
+                'type': 'message_status_update',
+                'message_id': message.id,
+                'status': status_value,
+                'user_id': request.user.id,
+                'user_name': request.user.name,
+                'timestamp': timezone.now().isoformat()
+            }
+            
+            async_to_sync(channel_layer.group_send)(room_group_name, event)
+            logger.info(f"Broadcasted message status update for message {message.id} to group {room_group_name}")
+        except Exception as e:
+            logger.error(f"Failed to broadcast message status update: {e}")
+        
         return Response({"status": "updated"})
 
 
@@ -415,17 +435,39 @@ class MarkMessagesReadView(APIView):
         if not messages_to_mark.exists():
             return Response({"status": "No messages to mark as read", "count": 0})
 
-        try:
-            # Use a single atomic transaction to perform all updates.
+        try:            # Use a single atomic transaction to perform all updates.
             with transaction.atomic():
                 # Loop through messages and update or create their status.
                 # This is more resilient to locking than bulk operations in some cases.
+                updated_message_ids = []
                 for message in messages_to_mark:
                     MessageStatus.objects.update_or_create(
                         message=message,
                         user=request.user,
                         defaults={'status': 'read'}
                     )
+                    updated_message_ids.append(message.id)
+            
+            # Broadcast bulk read status update to all group members via WebSocket
+            try:
+                channel_layer = get_channel_layer()
+                room_group_name = f'chat_{group_id}'
+                
+                # Create bulk status update event
+                event = {
+                    'type': 'message_status_update',
+                    'message_ids': updated_message_ids,
+                    'status': 'read',
+                    'user_id': request.user.id,
+                    'user_name': request.user.name,
+                    'timestamp': timezone.now().isoformat(),
+                    'bulk_update': True
+                }
+                
+                async_to_sync(channel_layer.group_send)(room_group_name, event)
+                logger.info(f"Broadcasted bulk read status update for {len(updated_message_ids)} messages to group {room_group_name}")
+            except Exception as e:
+                logger.error(f"Failed to broadcast bulk read status update: {e}")
             
             return Response({"status": "Messages marked as read", "count": messages_to_mark.count()})
 

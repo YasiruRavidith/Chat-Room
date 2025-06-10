@@ -8,7 +8,7 @@ import notificationService from '../services/notificationService';
 
 export const useWebSocket = () => {
     const { accessToken } = useAuthStore();
-    const { selectedGroup, addMessage, fetchGroups } = useChatStore();
+    const { selectedGroup, addMessage, fetchGroups, updateMessageStatus, updateMessageReadStatus } = useChatStore();
     const chatSocketRef = useRef(null);
     const notificationSocketRef = useRef(null);
     const [connectionStatus, setConnectionStatus] = useState({
@@ -93,17 +93,16 @@ export const useWebSocket = () => {
             setConnectionStatus(prev => ({ ...prev, chat: 'disconnected' }));
         };
         const onError = (err) => console.error(`[WebSocket] Chat error for group ${selectedGroup.id}:`, err);
-        
-        // THIS IS THE CORRECTED onMessage HANDLER
+          // THIS IS THE CORRECTED onMessage HANDLER
         const onMessage = (data) => {
             console.log('[WebSocket] Chat data received:', data);
 
             // The backend consumer sends two types of data:
             // 1. An object with a 'type' key for events like typing.
             // 2. A full message object when a message is broadcast. This object will NOT have a 'type' key.
-            
-            if (data.type === 'typing') {
-                // Handle typing indicator
+              if (data.type === 'typing' || data.type === 'typing_indicator') {
+                // Handle typing indicator - backend sends 'typing_indicator' type
+                console.log('[WebSocket] Processing typing indicator:', data);
                 setTypingUsers(prev => {
                     const isUserTyping = prev.some(u => u.user_id === data.user_id);
                     if (data.is_typing && !isUserTyping) {
@@ -113,8 +112,25 @@ export const useWebSocket = () => {
                         return prev.filter(u => u.user_id !== data.user_id);
                     }
                     return prev;
-                });
-            } else if (data.id && data.sender !== undefined) {
+                });            }else if (data.type === 'message_status_update') {
+                // Handle real-time message status updates
+                console.log('[WebSocket] Processing message status update:', data);
+                
+                if (data.bulk_update && data.message_ids) {
+                    // Handle bulk status updates (e.g., mark all as read)
+                    data.message_ids.forEach(messageId => {
+                        updateMessageStatus(messageId, data.status);
+                    });
+                } else if (data.message_id) {
+                    // Handle single message status update
+                    updateMessageStatus(data.message_id, data.status);
+                }
+                
+                // Refresh groups list to update unread counts in sidebar
+                setTimeout(() => {
+                    fetchGroups();
+                }, 200);
+            }else if (data.id && data.sender !== undefined) {
                 // This is a message object (it has an 'id' and 'sender' key).
                 // The 'addMessage' function in the store will add it to the state.
                 addMessage(data);
@@ -131,7 +147,7 @@ export const useWebSocket = () => {
             }
             setTypingUsers([]); // Clear typing users when leaving a group
         };
-    }, [selectedGroup, accessToken, addMessage, connectSocket]);
+    }, [selectedGroup, accessToken, addMessage, connectSocket, updateMessageStatus, updateMessageReadStatus]);
 
 
     // --- Functions to send data to WebSockets ---
